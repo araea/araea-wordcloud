@@ -3,7 +3,7 @@ araea-wordcloud
 
 [<img alt="github" src="https://img.shields.io/badge/github-araea/araea__wordcloud-8da0cb?style=for-the-badge&labelColor=555555&logo=github" height="20">](https://github.com/araea/araea-wordcloud)
 [<img alt="crates.io" src="https://img.shields.io/crates/v/araea-wordcloud.svg?style=for-the-badge&color=fc8d62&logo=rust" height="20">](https://crates.io/crates/araea-wordcloud)
-[<img alt="docs.rs" src="https://img.shields.io/docsrs/araea-wordcloud?style=for-the-badge&labelColor=555555" height="20">](https://docs.rs/araea-wordcloud)
+[<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-araea__wordcloud-66c2a5?style=for-the-badge&labelColor=555555&logo=docs.rs" height="20">](https://docs.rs/araea-wordcloud)
 
 一个纯 Rust 实现的高性能词云可视化库。
 支持蒙版遮罩、SVG/PNG 双输出、自定义字体与配色。
