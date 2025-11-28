@@ -439,6 +439,7 @@ impl WordCloudBuilder {
         ))
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn try_place_word(
         &self,
         text: &str,
@@ -525,7 +526,7 @@ impl CollisionMap {
 
         // 计算 X 轴上的位移
         // TS logic: shift = startX & 31
-        let shift = (start_x & 31).abs() as u32; // abs purely for safety, logical & handles neg
+        let shift = (start_x & 31).unsigned_abs(); // abs purely for safety, logical & handles neg
         let r_shift = 32 - shift;
 
         // 计算 grid 中的起始索引
@@ -589,7 +590,7 @@ impl CollisionMap {
     fn write_sprite(&mut self, sprite: &TextSprite, start_x: i32, start_y: i32) {
         let sprite_w32 = sprite.width_u32;
         let sprite_h = sprite.bbox_height;
-        let shift = (start_x & 31).abs() as u32;
+        let shift = (start_x & 31).unsigned_abs();
         let r_shift = 32 - shift;
 
         for sy in 0..sprite_h {
