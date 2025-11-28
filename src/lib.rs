@@ -844,7 +844,7 @@ impl WordCloud {
         ));
 
         svg.push_str(&format!(
-            r#"<style>text{{font-family:'{}',Arial,sans-serif;font-weight:700}}</style>"#,
+            r#"<style>text{{font-family:'{}',Arial,sans-serif}}</style>"#,
             escape_xml(&self.font_family)
         ));
 
@@ -874,6 +874,15 @@ impl WordCloud {
         fontdb.load_font_source(usvg::fontdb::Source::Binary(Arc::new(
             self.font_data.clone(),
         )));
+
+        println!("=== 正在渲染 SVG，请求的字体名: '{}' ===", self.font_family);
+        println!("=== fontdb 中已加载的字体列表: ===");
+        for face in fontdb.faces() {
+            println!(
+                "  Family: {:?}, Weight: {:?}, Style: {:?}, Stretch: {:?}",
+                face.families, face.weight, face.style, face.stretch
+            );
+        }
 
         let options = usvg::Options {
             font_family: self.font_family.clone(),
