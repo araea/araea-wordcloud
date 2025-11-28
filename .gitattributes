@@ -2,3 +2,9 @@
 
 *.ttf -diff -merge -text
 *.otf -diff -merge -text
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.svg binary
+*.ttf binary
