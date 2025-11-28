@@ -71,6 +71,7 @@ let wordcloud = WordCloudBuilder::new()
 
 ### Chinese Dense Word Cloud  
 ![Chinese Dense Example](./output_chinese_dense.png)
+![Chinese Dense Example](./output_chinese_example.png)
 
 Run the examples:
 - `cargo run --example simple` - Basic usage
