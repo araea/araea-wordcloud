@@ -1,0 +1,4 @@
+./assets/HarmonyOS_Sans_SC_Bold -diff -merge -text
+
+*.ttf -diff -merge -text
+*.otf -diff -merge -text

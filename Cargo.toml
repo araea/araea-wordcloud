@@ -1,0 +1,44 @@
+[package]
+name = "araea-wordcloud"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["Araea"]
+description = "High-performance word cloud visualization library supporting SVG/PNG output, custom masks, and color schemes."
+categories = ["visualization", "multimedia::images", "graphics"]
+repository = "https://github.com/araea/araea-wordcloud"
+keywords = ["wordcloud", "visualization", "image", "svg", "graphics"]
+readme = "README.md"
+
+[dependencies]
+rand = "0.9"
+usvg = "0.45"
+image = "0.25"
+resvg = "0.45"
+fontdue = "0.9"
+tiny-skia = "0.11"
+thiserror = "2.0"
+rand_chacha = "0.9"
+
+# ==============================================================================
+# Examples
+# ==============================================================================
+
+[[example]]
+name = "simple"
+path = "examples/simple.rs"
+
+[[example]]
+name = "mask_shape"
+path = "examples/mask_shape.rs"
+
+[[example]]
+name = "advanced"
+path = "examples/advanced.rs"
+
+[[example]]
+name = "chinese_dense"
+path = "examples/chinese_dense.rs"
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
