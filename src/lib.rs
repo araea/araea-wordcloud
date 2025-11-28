@@ -870,7 +870,7 @@ impl WordCloud {
     pub fn to_png(&self, scale: f32) -> Result<Vec<u8>, Error> {
         let svg_content = self.to_svg();
         let mut fontdb = usvg::fontdb::Database::new();
-        fontdb.load_system_fonts();
+        // fontdb.load_system_fonts();
         fontdb.load_font_source(usvg::fontdb::Source::Binary(Arc::new(
             self.font_data.clone(),
         )));
