@@ -17,11 +17,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("Building word cloud...");
+
+    let scheme = ColorScheme::Default;
     let wordcloud = WordCloudBuilder::new()
         .size(width, height)
         .mask_preset(MaskShape::Heart)
-        .color_scheme(ColorScheme::Berry)
-        .background("#FFFFFF")
+        .color_scheme(scheme)
+        .background(scheme.background_color())
         .padding(2)
         .word_spacing(2.0)
         .font_size_range(12.0, 80.0)

@@ -14,15 +14,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Building word cloud ({}x{})...", width, height);
 
+    let scheme = ColorScheme::Default;
     let wordcloud = WordCloudBuilder::new()
         .size(width, height)
-        .color_scheme(ColorScheme::Ocean)
-        .background("#F5F7FA")
+        .color_scheme(scheme)
+        .background(scheme.background_color())
         .padding(2)
         .word_spacing(2.0)
         .angles(vec![0.0, 90.0])
         .font_size_range(10.0, 100.0)
-        .seed(2023)
+        .seed(2025)
         .build(&words)?;
 
     let output_path = "output_chinese_dense.png";

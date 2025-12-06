@@ -2,6 +2,7 @@
  * Araea WordCloud Library
  *
  * 一个纯 Rust 实现的词云可视化库。
+ * https://wordcloud.online/zh
  */
 
 use fontdue::{Font, FontSettings};
@@ -65,27 +66,39 @@ pub struct PlacedWord {
 #[derive(Debug, Clone, Copy, Default)]
 pub enum ColorScheme {
     #[default]
-    Ocean,
-    Sunset,
-    Forest,
-    Berry,
-    Monochrome,
-    Rainbow,
+    Default,
+    Contrasting1,
+    Blue,
+    Green,
+    Cold1,
+    Black,
+    White,
 }
 
 impl ColorScheme {
     pub fn colors(&self) -> Vec<&'static str> {
         match self {
-            ColorScheme::Ocean => vec!["#264653", "#287271", "#2a9d8f", "#8ab17d", "#e9c46a"],
-            ColorScheme::Sunset => vec!["#f94144", "#f3722c", "#f8961e", "#f9844a", "#f9c74f"],
-            ColorScheme::Forest => vec!["#2d6a4f", "#40916c", "#52b788", "#74c69d", "#95d5b2"],
-            ColorScheme::Berry => vec!["#7b2cbf", "#9d4edd", "#c77dff", "#e0aaff", "#ff6d00"],
-            ColorScheme::Monochrome => vec!["#212529", "#495057", "#6c757d", "#adb5bd", "#ced4da"],
-            ColorScheme::Rainbow => {
-                vec![
-                    "#e63946", "#f4a261", "#e9c46a", "#2a9d8f", "#457b9d", "#7b2cbf",
-                ]
+            ColorScheme::Default => vec!["#0b100c", "#bb0119", "#c7804b", "#bca692", "#1c4e17"],
+            ColorScheme::Contrasting1 => {
+                vec!["#e76f3d", "#feab6b", "#f3e9e7", "#9bcfe0", "#00a7c7"]
             }
+            ColorScheme::Blue => vec!["#264653", "#2a9d8f", "#e9c46a", "#f4a261", "#e76f51"],
+            ColorScheme::Green => vec!["#386641", "#6a994e", "#a7c957", "#f2e8cf", "#bc4749"],
+            ColorScheme::Cold1 => vec!["#252b31", "#5e6668", "#c1c8c7", "#f6fafb", "#d49c6b"],
+            ColorScheme::Black => vec!["#000000"],
+            ColorScheme::White => vec!["#ffffff"],
+        }
+    }
+
+    pub fn background_color(&self) -> &'static str {
+        match self {
+            ColorScheme::Default => "#ffffff",
+            ColorScheme::Contrasting1 => "#000000",
+            ColorScheme::Blue => "#ffffff",
+            ColorScheme::Green => "#ffffff",
+            ColorScheme::Cold1 => "#000000",
+            ColorScheme::Black => "#ffffff",
+            ColorScheme::White => "#000000",
         }
     }
 }
@@ -161,15 +174,12 @@ pub struct WordCloudBuilder {
 
 impl Default for WordCloudBuilder {
     fn default() -> Self {
+        let scheme = ColorScheme::Default;
         Self {
             width: 800,
             height: 600,
-            background: "#FFFFFF".into(),
-            colors: ColorScheme::Ocean
-                .colors()
-                .into_iter()
-                .map(String::from)
-                .collect(),
+            background: scheme.background_color().into(),
+            colors: scheme.colors().into_iter().map(String::from).collect(),
             font_data: None,
             mask_data: None,
             padding: 2,
@@ -200,13 +210,14 @@ impl WordCloudBuilder {
 
     pub fn color_scheme(mut self, scheme: ColorScheme) -> Self {
         self.colors = scheme.colors().into_iter().map(String::from).collect();
+        self.background = scheme.background_color().into();
         self
     }
 
     pub fn colors(mut self, colors: impl IntoIterator<Item = impl Into<String>>) -> Self {
         self.colors = colors.into_iter().map(|c| c.into()).collect();
         if self.colors.is_empty() {
-            self.colors = ColorScheme::Ocean
+            self.colors = ColorScheme::Default
                 .colors()
                 .into_iter()
                 .map(String::from)
@@ -465,7 +476,7 @@ impl WordCloudBuilder {
         let max_iter = 10000;
 
         for (dx, dy) in spiral.take(max_iter) {
-            // 计算左上角坐标 (TS逻辑: current_x 是 sprite 左上角)
+            // 计算左上角坐标
             let current_x = start_x + dx - (sprite.bbox_width as i32 / 2);
             let current_y = start_y + dy - (sprite.bbox_height as i32 / 2);
 
@@ -499,7 +510,6 @@ struct CollisionMap {
 
 impl CollisionMap {
     fn new(width: u32, height: u32) -> Self {
-        // TS逻辑: width >> 5
         let stride = ((width + 31) >> 5) as usize;
         Self {
             width,
@@ -525,8 +535,7 @@ impl CollisionMap {
         let sprite_h = sprite.bbox_height;
 
         // 计算 X 轴上的位移
-        // TS logic: shift = startX & 31
-        let shift = (start_x & 31).unsigned_abs(); // abs purely for safety, logical & handles neg
+        let shift = (start_x & 31).unsigned_abs();
         let r_shift = 32 - shift;
 
         // 计算 grid 中的起始索引
@@ -556,9 +565,6 @@ impl CollisionMap {
                 };
 
                 // 构造 Mask: 上一块的剩余部分 | 当前块的移位部分
-                // TS: (carry << rShift) | (sVal >>> shift)
-                // Rust u32 >> is logical shift (zero-fill), matching JS >>>
-                // 需要注意 shift == 0 的情况，Rust shift overflow 会 panic
                 let mask = if shift == 0 {
                     s_val
                 } else {
@@ -784,7 +790,6 @@ struct ArchimedeanSpiral {
 
 impl ArchimedeanSpiral {
     fn new(width: i32, height: i32, dt: i32) -> Self {
-        // TS parameters: e = 4
         let e = 4.0;
         let ratio = e * width as f64 / height as f64;
         Self {
@@ -804,7 +809,6 @@ impl Iterator for ArchimedeanSpiral {
     fn next(&mut self) -> Option<Self::Item> {
         self.t += self.dt;
         let sign = if self.t < 0 { -1.0 } else { 1.0 };
-        // TS Spiral logic approximation
         let idx = ((1.0 + 4.0 * sign * self.t as f64).sqrt() - sign) as i32 & 3;
         match idx {
             0 => self.dx += self.ratio,
@@ -870,19 +874,10 @@ impl WordCloud {
     pub fn to_png(&self, scale: f32) -> Result<Vec<u8>, Error> {
         let svg_content = self.to_svg();
         let mut fontdb = usvg::fontdb::Database::new();
-        // fontdb.load_system_fonts();
+
         fontdb.load_font_source(usvg::fontdb::Source::Binary(Arc::new(
             self.font_data.clone(),
         )));
-
-        // println!("=== 正在渲染 SVG，请求的字体名: '{}' ===", self.font_family);
-        // println!("=== fontdb 中已加载的字体列表: ===");
-        // for face in fontdb.faces() {
-        //     println!(
-        //         "  Family: {:?}, Weight: {:?}, Style: {:?}, Stretch: {:?}",
-        //         face.families, face.weight, face.style, face.stretch
-        //     );
-        // }
 
         let options = usvg::Options {
             font_family: self.font_family.clone(),
