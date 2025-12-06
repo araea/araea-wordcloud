@@ -57,7 +57,7 @@ let words = vec![
 let wordcloud = WordCloudBuilder::new()
     .size(800, 800)
     .background("#FFFFFF")
-    .color_scheme(ColorScheme::Berry)
+    .color_scheme(ColorScheme::Default)
     .mask_preset(MaskShape::Heart)
     .font_size_range(20.0, 100.0)
     .angles(vec![0.0, 90.0])
