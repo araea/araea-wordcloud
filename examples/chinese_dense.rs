@@ -1,4 +1,4 @@
-use araea_wordcloud::{ColorScheme, WordCloudBuilder, WordInput};
+use araea_wordcloud::{ColorScheme, MaskShape, WordCloudBuilder, WordInput};
 use rand::Rng;
 use std::fs;
 use std::time::Instant;
@@ -36,6 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .color_scheme(scheme)
         .background(scheme.background_color())
         .padding(2)
+        .mask_preset(MaskShape::Heart)
         .angles(vec![0.0, 90.0])
         .word_spacing(2.0)
         .font_size_range(14.0, dynamic_max_font_size)
