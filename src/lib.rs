@@ -875,14 +875,14 @@ impl WordCloud {
             self.font_data.clone(),
         )));
 
-        println!("=== 正在渲染 SVG，请求的字体名: '{}' ===", self.font_family);
-        println!("=== fontdb 中已加载的字体列表: ===");
-        for face in fontdb.faces() {
-            println!(
-                "  Family: {:?}, Weight: {:?}, Style: {:?}, Stretch: {:?}",
-                face.families, face.weight, face.style, face.stretch
-            );
-        }
+        // println!("=== 正在渲染 SVG，请求的字体名: '{}' ===", self.font_family);
+        // println!("=== fontdb 中已加载的字体列表: ===");
+        // for face in fontdb.faces() {
+        //     println!(
+        //         "  Family: {:?}, Weight: {:?}, Style: {:?}, Stretch: {:?}",
+        //         face.families, face.weight, face.style, face.stretch
+        //     );
+        // }
 
         let options = usvg::Options {
             font_family: self.font_family.clone(),
