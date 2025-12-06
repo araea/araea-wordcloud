@@ -25,7 +25,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .color_scheme(scheme)
         .background(scheme.background_color())
         .padding(2)
-        .word_spacing(2.0)
         .font_size_range(12.0, 80.0)
         .build(&words)?;
 

@@ -1,8 +1,7 @@
 /*!
  * Araea WordCloud Library
  *
- * A pure Rust implementation of the Word Cloud algorithm, aligned with the logic
- * found in wordcloud2.js / B8yHTEJ1.js.
+ * 一个纯 Rust 实现的词云可视化库。
  */
 
 use fontdue::{Font, FontSettings};
@@ -35,6 +34,7 @@ pub enum Error {
 // Public Data Types
 // =============================================================================
 
+/// 单词输入项
 #[derive(Debug, Clone)]
 pub struct WordInput {
     pub text: String,
@@ -50,6 +50,7 @@ impl WordInput {
     }
 }
 
+/// 已布局的单词
 #[derive(Debug, Clone)]
 pub struct PlacedWord {
     pub text: String,
@@ -60,6 +61,7 @@ pub struct PlacedWord {
     pub color: String,
 }
 
+/// 预设配色方案
 #[derive(Debug, Clone, Copy, Default)]
 pub enum ColorScheme {
     #[default]
@@ -104,6 +106,7 @@ impl ColorScheme {
 // Preset Masks
 // =============================================================================
 
+/// 内置蒙版形状
 #[derive(Debug, Clone, Copy, Default)]
 pub enum MaskShape {
     #[default]
@@ -116,6 +119,7 @@ pub enum MaskShape {
 }
 
 impl MaskShape {
+    /// 获取蒙版的 SVG 字节数据
     pub fn bytes(&self) -> &'static [u8] {
         match self {
             MaskShape::Circle => include_bytes!("../assets/circle.svg"),
@@ -164,11 +168,11 @@ pub struct WordCloudBuilder {
     max_font_size: f32,
     angles: Vec<f32>,
     seed: Option<u64>,
-    word_spacing: f32,
 }
 
 impl Default for WordCloudBuilder {
     fn default() -> Self {
+        // 配置与 JS 默认值一致
         let scheme = ColorScheme::Default;
         Self {
             width: 800,
@@ -177,12 +181,11 @@ impl Default for WordCloudBuilder {
             colors: scheme.colors().into_iter().map(String::from).collect(),
             font_data: None,
             mask_data: None,
-            padding: 2,
-            min_font_size: 14.0,
-            max_font_size: 120.0,
+            padding: 5,
+            min_font_size: 10.0,
+            max_font_size: 100.0,
             angles: vec![0.0],
             seed: None,
-            word_spacing: 4.0,
         }
     }
 }
@@ -242,18 +245,13 @@ impl WordCloudBuilder {
     }
 
     pub fn font_size_range(mut self, min: f32, max: f32) -> Self {
-        self.min_font_size = min.max(8.0);
+        self.min_font_size = min.max(4.0);
         self.max_font_size = max.max(self.min_font_size);
         self
     }
 
     pub fn angles(mut self, angles: Vec<f32>) -> Self {
         self.angles = if angles.is_empty() { vec![0.0] } else { angles };
-        self
-    }
-
-    pub fn word_spacing(mut self, spacing: f32) -> Self {
-        self.word_spacing = spacing.max(0.0);
         self
     }
 
@@ -267,6 +265,7 @@ impl WordCloudBuilder {
             return Err(Error::Input("Word list cannot be empty".into()));
         }
 
+        // 验证并过滤单词
         let valid_words: Vec<_> = words
             .iter()
             .filter(|w| !w.text.trim().is_empty() && w.weight > 0.0)
@@ -277,35 +276,36 @@ impl WordCloudBuilder {
             return Err(Error::Input("No valid words provided".into()));
         }
 
+        // 加载字体
         let font_info = self.load_font()?;
         let font = Font::from_bytes(font_info.data.as_slice(), FontSettings::default())
             .map_err(|e| Error::Font(e.to_string()))?;
 
-        // 1. Init Grid
+        // 初始化碰撞图
         let mut collision_map = CollisionMap::new(self.width, self.height);
 
-        // 2. Apply Mask
+        // 应用蒙版
         if let Some(mask_bytes) = &self.mask_data {
             self.apply_mask(&mut collision_map, mask_bytes)?;
         }
 
+        // 初始化随机数
         let mut rng = match self.seed {
             Some(s) => ChaCha8Rng::seed_from_u64(s),
             None => ChaCha8Rng::from_os_rng(),
         };
 
-        // Sort by weight desc
+        // 排序单词（权重从大到小）
         let mut sorted_words = valid_words;
         sorted_words.sort_by(|a, b| b.weight.partial_cmp(&a.weight).unwrap());
 
+        // 计算权重归一化因子
         let max_weight = sorted_words.first().map(|w| w.weight).unwrap_or(1.0);
         let min_weight = sorted_words.last().map(|w| w.weight).unwrap_or(1.0);
         let weight_range = max_weight - min_weight;
 
         let mut placed_words = Vec::with_capacity(sorted_words.len());
-        let effective_padding = self.padding + (self.word_spacing / 2.0) as u32;
 
-        // 3. Layout Loop
         for word in &sorted_words {
             let normalized = if weight_range > 0.0 {
                 (word.weight - min_weight) / weight_range
@@ -313,20 +313,20 @@ impl WordCloudBuilder {
                 1.0
             };
 
-            // Linear sizing logic (matches JS simple scaling)
+            // 线性插值计算字体大小，对应 JS: font_size = scale * size
             let font_size =
                 self.min_font_size + normalized * (self.max_font_size - self.min_font_size);
 
             let angle = self.angles[rng.random_range(0..self.angles.len())];
 
-            // 4. Try Place
+            // 尝试放置
             if let Some(pos) = self.try_place_word(
                 &word.text,
                 font_size,
                 angle,
                 &font,
                 &mut collision_map,
-                effective_padding,
+                self.padding,
                 &mut rng,
             ) {
                 let color = self.colors[rng.random_range(0..self.colors.len())].clone();
@@ -366,14 +366,16 @@ impl WordCloudBuilder {
         Ok(FontInfo { data, family_name })
     }
 
+    /// 应用蒙版：支持 SVG 和光栅图片
     fn apply_mask(&self, collision_map: &mut CollisionMap, mask_bytes: &[u8]) -> Result<(), Error> {
         let mut apply_pixels =
             |width: u32, height: u32, get_pixel: &dyn Fn(u32, u32) -> Option<(u8, u8, u8, u8)>| {
                 for y in 0..height {
                     for x in 0..width {
                         if let Some((r, g, b, a)) = get_pixel(x, y) {
-                            // Logic matches JS: white (sum >= 750) or transparent (a < 128) is blocked
                             let sum = r as u16 + g as u16 + b as u16;
+                            // Alpha < 128 is effectively transparent -> blocked
+                            // RGB sum >= 750 (near white) -> blocked
                             let is_blocked = a < 128 || sum >= 750;
 
                             if is_blocked {
@@ -384,6 +386,7 @@ impl WordCloudBuilder {
                 }
             };
 
+        // 尝试 1: 解析 SVG
         let opt = usvg::Options::default();
         if let Ok(tree) = usvg::Tree::from_data(mask_bytes, &opt) {
             let size = tree.size().to_int_size();
@@ -393,6 +396,7 @@ impl WordCloudBuilder {
             let mut pixmap = Pixmap::new(self.width, self.height)
                 .ok_or(Error::Render("Failed to create mask buffer".into()))?;
 
+            // 填充白色背景（防止 SVG 透明部分被误判）
             pixmap.fill(tiny_skia::Color::WHITE);
 
             let transform = Transform::from_scale(scale_x, scale_y);
@@ -406,6 +410,7 @@ impl WordCloudBuilder {
             return Ok(());
         }
 
+        // 尝试 2: 解析光栅图片 (PNG, JPG)
         if let Ok(img) = image::load_from_memory(mask_bytes) {
             let resized = img.resize_exact(
                 self.width,
@@ -440,7 +445,6 @@ impl WordCloudBuilder {
         padding: u32,
         rng: &mut ChaCha8Rng,
     ) -> Option<(f32, f32)> {
-        // Rasterize text to tight bounding box bitmask
         let sprite = rasterize_text(text, font_size, angle, font, padding);
 
         if sprite.bbox_width == 0 || sprite.bbox_height == 0 {
@@ -452,29 +456,21 @@ impl WordCloudBuilder {
 
         let dt = if rng.random_bool(0.5) { 1 } else { -1 };
 
-        // 5. Spiral Search (Archimedean)
+        // 螺旋迭代
         let spiral = ArchimedeanSpiral::new(map.width as i32, map.height as i32, dt);
-        let max_iter = (map.width * map.height) as usize / 2; // Reasonable limit
+        let max_iter = (map.width * map.height) as usize / 2;
 
         for (dx, dy) in spiral.take(max_iter) {
-            // Attempt placement at (current_x, current_y) which represents Top-Left of Sprite
+            // 计算左上角坐标
             let current_x = start_x + dx - (sprite.bbox_width as i32 / 2);
             let current_y = start_y + dy - (sprite.bbox_height as i32 / 2);
 
-            // 6. Collision Check
+            // 检查碰撞
             if !map.check_collision(&sprite, current_x, current_y) {
-                // 7. Update Grid
+                // 写入 Grid
                 map.write_sprite(&sprite, current_x, current_y);
 
-                // Return CENTER coordinates for SVG transformation
-                // The sprite was placed at top-left `current_x`, `current_y`.
-                // The center is simply half dimensions away.
-                // NOTE: We don't use anchor_x/y here anymore because rasterize_text
-                // returns a tight box, and we position that tight box centered on the spiral point.
-                // For SVG `text-anchor="middle"`, we need the coordinates of the text origin/center.
-                // Since `rasterize_text` now returns the offset from the TightBox-TopLeft
-                // to the Text-Center (text_center_x, text_center_y), we add that.
-
+                // 返回中心点坐标 (用于 SVG text-anchor="middle" 的渲染)
                 return Some((
                     current_x as f32 + sprite.text_center_x,
                     current_y as f32 + sprite.text_center_y,
@@ -493,7 +489,7 @@ impl WordCloudBuilder {
 struct CollisionMap {
     width: u32,
     height: u32,
-    stride: usize,
+    stride: usize, // 每行有多少个 u32
     data: Vec<u32>,
 }
 
@@ -508,6 +504,7 @@ impl CollisionMap {
         }
     }
 
+    /// 设置某个点为占用 (用于 Mask 初始化)
     fn set(&mut self, x: i32, y: i32) {
         if x >= 0 && y >= 0 && x < self.width as i32 && y < self.height as i32 {
             let row_idx = y as usize * self.stride;
@@ -517,13 +514,14 @@ impl CollisionMap {
         }
     }
 
+    /// 高效碰撞检测
     fn check_collision(&self, sprite: &TextSprite, start_x: i32, start_y: i32) -> bool {
         let sprite_w32 = sprite.width_u32;
         let sprite_h = sprite.bbox_height;
         let shift = (start_x & 31).unsigned_abs();
         let r_shift = 32 - shift;
 
-        // Bounding box pre-check
+        // 边界预检查
         if start_x + (sprite.bbox_width as i32) < 0
             || start_x >= self.width as i32
             || start_y + (sprite.bbox_height as i32) < 0
@@ -534,8 +532,9 @@ impl CollisionMap {
 
         for sy in 0..sprite_h {
             let gy = start_y + sy as i32;
+
             if gy < 0 || gy >= self.height as i32 {
-                return true; // Out of bounds usually means collision in this context
+                return true;
             }
 
             let grid_row_idx = gy as usize * self.stride;
@@ -549,6 +548,7 @@ impl CollisionMap {
                     0
                 };
 
+                // 构造 Mask: 结合移位
                 let mask = if shift == 0 {
                     s_val
                 } else {
@@ -565,12 +565,14 @@ impl CollisionMap {
                         return true;
                     }
                 }
+
                 carry = s_val;
             }
         }
         false
     }
 
+    /// 将 Sprite 写入 Grid (位运算优化)
     fn write_sprite(&mut self, sprite: &TextSprite, start_x: i32, start_y: i32) {
         let sprite_w32 = sprite.width_u32;
         let sprite_h = sprite.bbox_height;
@@ -604,6 +606,7 @@ impl CollisionMap {
                 if mask != 0 && gx >= 0 && gx < self.stride as isize {
                     self.data[grid_row_idx + gx as usize] |= mask;
                 }
+
                 carry = s_val;
             }
         }
@@ -611,16 +614,16 @@ impl CollisionMap {
 }
 
 struct TextSprite {
-    data: Vec<u32>,
-    width_u32: usize,
+    data: Vec<u32>,   // 扁平化的位图数据
+    width_u32: usize, // 每行有多少个 u32
     bbox_width: u32,
     bbox_height: u32,
-    text_center_x: f32, // Offset from TopLeft to Text Center
+    text_center_x: f32, // TopLeft 到 Text Center 的偏移
     text_center_y: f32,
 }
 
 fn rasterize_text(text: &str, size: f32, angle_deg: f32, font: &Font, padding: u32) -> TextSprite {
-    // 1. Basic Rasterization
+    // 1. 获取字体度量
     let metrics = font
         .horizontal_line_metrics(size)
         .unwrap_or(fontdue::LineMetrics {
@@ -639,26 +642,27 @@ fn rasterize_text(text: &str, size: f32, angle_deg: f32, font: &Font, padding: u
         total_width += glyph_metrics.advance_width;
     }
 
-    // 2. Transformations
+    // 2. 变换参数
     let padding_f = padding as f32;
-    // Initial geometric box (untight)
+    // 原始包围盒大小
     let unrotated_w = total_width.ceil() + padding_f * 2.0;
     let unrotated_h = metrics.new_line_size.ceil() + padding_f * 2.0;
 
-    // Center of text
+    // 旋转中心 (Geometric Center)
     let cx = unrotated_w / 2.0;
     let cy = unrotated_h / 2.0;
 
     let rad = angle_deg.to_radians();
     let (sin, cos) = rad.sin_cos();
 
+    // 变换函数
     let transform = |x: f32, y: f32| -> (f32, f32) {
         let dx = x - cx;
         let dy = y - cy;
         (dx * cos - dy * sin + cx, dx * sin + dy * cos + cy)
     };
 
-    // Calculate geometric bounds for buffer allocation
+    // 3. 计算旋转后的边界
     let corners = [
         transform(0.0, 0.0),
         transform(unrotated_w, 0.0),
@@ -680,14 +684,11 @@ fn rasterize_text(text: &str, size: f32, angle_deg: f32, font: &Font, padding: u
     let buf_width = (max_x - min_x).ceil() as i32;
     let buf_height = (max_y - min_y).ceil() as i32;
 
-    // 3. Pixel Collection (finding tight bounds)
-    // We map pixels to a set of (x,y) points
+    // 4. 像素收集与 Tight Bounding Box 计算
     let mut pixels = Vec::new();
     let base_x = padding_f;
     let base_y = padding_f + metrics.ascent;
 
-    // To align with JS behavior, we collect actual pixels to find the "Tight" bounding box.
-    // The "geometric" box is often too large for diagonal text.
     let mut tight_min_x = i32::MAX;
     let mut tight_max_x = i32::MIN;
     let mut tight_min_y = i32::MAX;
@@ -699,17 +700,16 @@ fn rasterize_text(text: &str, size: f32, angle_deg: f32, font: &Font, padding: u
 
         for y in 0..glyph_metrics.height {
             for x in 0..glyph_metrics.width {
-                // Alpha threshold
+                // Alpha threshold > 10
                 if bitmap[y * glyph_metrics.width + x] > 10 {
                     let ox = char_left + x as f32;
                     let oy = char_top + y as f32;
                     let (rx, ry) = transform(ox, oy);
 
-                    // Map to buffer coordinates
                     let fx = (rx - min_x).round() as i32;
                     let fy = (ry - min_y).round() as i32;
 
-                    // Apply padding
+                    // 应用 padding (膨胀)
                     let pad = padding as i32;
                     for py in -pad..=pad {
                         for px in -pad..=pad {
@@ -741,7 +741,7 @@ fn rasterize_text(text: &str, size: f32, angle_deg: f32, font: &Font, padding: u
         };
     }
 
-    // 4. Create Tight Sprite
+    // 5. 生成位图数据 (压缩到 Tight Box)
     let tight_w = (tight_max_x - tight_min_x + 1) as u32;
     let tight_h = (tight_max_y - tight_min_y + 1) as u32;
     let width_u32 = ((tight_w + 31) >> 5) as usize;
@@ -757,26 +757,13 @@ fn rasterize_text(text: &str, size: f32, angle_deg: f32, font: &Font, padding: u
         data[row_idx + col_idx] |= 1 << bit_idx;
     }
 
-    // 5. Calculate Center Offset
-    // We need the position of the text's rotation center (cx, cy)
-    // relative to the Top-Left of the Tight Bounding Box.
-    // (cx, cy) after transform is simply (cx, cy) relative to origin if purely rotated?
-    // transform() rotates around (cx, cy).
-    // The rotated point corresponding to (cx, cy) is ... (cx, cy).
-    // In buffer coords (relative to min_x, min_y):
-    // center_in_buffer = transform(cx, cy) - (min_x, min_y)
-    //                  = (cx, cy) - (min_x, min_y) ? NO.
-    // transform(cx, cy) = (cx, cy) by definition of rotation center.
-    // So buffer_cx = cx - min_x; buffer_cy = cy - min_y;
-    //
-    // The Tight Box Top Left in buffer coords is (tight_min_x, tight_min_y).
-    //
-    // So offset = buffer_center - tight_top_left
-    //           = (cx - min_x - tight_min_x, cy - min_y - tight_min_y)
-
+    // 6. 计算中心偏移
+    // cx, cy 是旋转中心相对于旋转前 TopLeft 的坐标
+    // 在 buffer 坐标系中，旋转中心位置是:
     let center_x_in_buffer = cx - min_x;
     let center_y_in_buffer = cy - min_y;
 
+    // 相对于 Tight Box 左上角的偏移
     let text_center_x = center_x_in_buffer - tight_min_x as f32;
     let text_center_y = center_y_in_buffer - tight_min_y as f32;
 
@@ -805,7 +792,7 @@ struct ArchimedeanSpiral {
 
 impl ArchimedeanSpiral {
     fn new(width: i32, height: i32, dt: i32) -> Self {
-        let e = 4.0;
+        let e = 4.0; // Aspect Ratio correction
         let ratio = e * width as f64 / height as f64;
         Self {
             t: 0,
@@ -862,13 +849,14 @@ impl WordCloud {
             self.background
         ));
 
+        // SVG Styling matches JS output: text-anchor: middle
         svg.push_str(&format!(
             r#"<style>text{{font-family:'{}',Arial,sans-serif;text-anchor:middle;dominant-baseline:middle}}</style>"#,
             escape_xml(&self.font_family)
         ));
 
         for word in &self.words {
-            // JS Output uses: transform="translate(x,y) rotate(deg)" with text-anchor="middle"
+            // JS output uses: transform="translate(x,y) rotate(deg)"
             svg.push_str(&format!(
                 r#"<text transform="translate({:.1},{:.1}) rotate({:.1})" fill="{}" font-size="{:.1}">{}</text>"#,
                 word.x,
