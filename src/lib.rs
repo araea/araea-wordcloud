@@ -59,6 +59,8 @@ pub struct PlacedWord {
     pub y: f32,
     pub rotation: f32,
     pub color: String,
+    /// 是否为竖排正写
+    pub is_vertical: bool,
 }
 
 /// 预设配色方案
@@ -168,6 +170,7 @@ pub struct WordCloudBuilder {
     max_font_size: f32,
     angles: Vec<f32>,
     seed: Option<u64>,
+    vertical_writing: bool,
 }
 
 impl Default for WordCloudBuilder {
@@ -186,6 +189,7 @@ impl Default for WordCloudBuilder {
             max_font_size: 100.0,
             angles: vec![0.0],
             seed: None,
+            vertical_writing: false,
         }
     }
 }
@@ -260,6 +264,12 @@ impl WordCloudBuilder {
         self
     }
 
+    /// 是否开启竖排正写（将 90 度旋转的词改为文字直立但竖向排列）
+    pub fn vertical_writing(mut self, enable: bool) -> Self {
+        self.vertical_writing = enable;
+        self
+    }
+
     pub fn build(self, words: &[WordInput]) -> Result<WordCloud, Error> {
         if words.is_empty() {
             return Err(Error::Input("Word list cannot be empty".into()));
@@ -313,14 +323,14 @@ impl WordCloudBuilder {
                 1.0
             };
 
-            // 线性插值计算字体大小，对应 JS: font_size = scale * size
+            // 线性插值计算字体大小
             let font_size =
                 self.min_font_size + normalized * (self.max_font_size - self.min_font_size);
 
             let angle = self.angles[rng.random_range(0..self.angles.len())];
 
             // 尝试放置
-            if let Some(pos) = self.try_place_word(
+            if let Some((pos, placed_angle, is_vertical)) = self.try_place_word(
                 &word.text,
                 font_size,
                 angle,
@@ -335,8 +345,9 @@ impl WordCloudBuilder {
                     font_size,
                     x: pos.0,
                     y: pos.1,
-                    rotation: angle,
+                    rotation: placed_angle,
                     color,
+                    is_vertical,
                 });
             }
         }
@@ -444,8 +455,11 @@ impl WordCloudBuilder {
         map: &mut CollisionMap,
         padding: u32,
         rng: &mut ChaCha8Rng,
-    ) -> Option<(f32, f32)> {
-        let sprite = rasterize_text(text, font_size, angle, font, padding);
+    ) -> Option<((f32, f32), f32, bool)> {
+        // 判断是否触发竖排正写逻辑：开启了选项，且角度接近 90 或 -90 度
+        let is_vertical = self.vertical_writing && (angle.abs() - 90.0).abs() < 1.0;
+
+        let sprite = rasterize_text(text, font_size, angle, font, padding, is_vertical);
 
         if sprite.bbox_width == 0 || sprite.bbox_height == 0 {
             return None;
@@ -471,9 +485,16 @@ impl WordCloudBuilder {
                 map.write_sprite(&sprite, current_x, current_y);
 
                 // 返回中心点坐标 (用于 SVG text-anchor="middle" 的渲染)
+                // 如果是竖排，angle 改为 0，因为字体不再旋转，而是排版旋转
+                let final_angle = if is_vertical { 0.0 } else { angle };
+
                 return Some((
-                    current_x as f32 + sprite.text_center_x,
-                    current_y as f32 + sprite.text_center_y,
+                    (
+                        current_x as f32 + sprite.text_center_x,
+                        current_y as f32 + sprite.text_center_y,
+                    ),
+                    final_angle,
+                    is_vertical,
                 ));
             }
         }
@@ -622,7 +643,14 @@ struct TextSprite {
     text_center_y: f32,
 }
 
-fn rasterize_text(text: &str, size: f32, angle_deg: f32, font: &Font, padding: u32) -> TextSprite {
+fn rasterize_text(
+    text: &str,
+    size: f32,
+    angle_deg: f32,
+    font: &Font,
+    padding: u32,
+    vertical_layout: bool,
+) -> TextSprite {
     // 1. 获取字体度量
     let metrics = font
         .horizontal_line_metrics(size)
@@ -635,25 +663,50 @@ fn rasterize_text(text: &str, size: f32, angle_deg: f32, font: &Font, padding: u
 
     let mut glyphs = Vec::new();
     let mut total_width = 0.0f32;
+    let mut max_glyph_width = 0.0f32;
 
     for ch in text.chars() {
         let (glyph_metrics, bitmap) = font.rasterize(ch, size);
         glyphs.push((total_width, glyph_metrics, bitmap));
         total_width += glyph_metrics.advance_width;
+
+        // 使用 advance_width 而不是 width 计算垂直列宽
+        // width 只是墨迹宽度，而 vertical-rl 布局时浏览器按 advance_width 对齐
+        // 这解决了包含窄字母（如英文）时，蒙版过窄导致重叠的问题
+        if glyph_metrics.advance_width > max_glyph_width {
+            max_glyph_width = glyph_metrics.advance_width;
+        }
     }
 
-    // 2. 变换参数
+    // 2. 变换参数与布局计算
     let padding_f = padding as f32;
-    // 原始包围盒大小
-    let unrotated_w = total_width.ceil() + padding_f * 2.0;
-    let unrotated_h = metrics.new_line_size.ceil() + padding_f * 2.0;
+    let unrotated_w;
+    let unrotated_h;
+
+    if vertical_layout {
+        // 竖排模式：宽度由最宽的字排版宽度决定
+        unrotated_w = max_glyph_width.ceil() + padding_f * 2.0;
+        // 简单估算：字符数 * line_size
+        unrotated_h =
+            (text.chars().count() as f32 * metrics.new_line_size).ceil() + padding_f * 2.0;
+    } else {
+        // 横排模式（默认）
+        unrotated_w = total_width.ceil() + padding_f * 2.0;
+        unrotated_h = metrics.new_line_size.ceil() + padding_f * 2.0;
+    }
 
     // 旋转中心 (Geometric Center)
     let cx = unrotated_w / 2.0;
     let cy = unrotated_h / 2.0;
 
-    let rad = angle_deg.to_radians();
-    let (sin, cos) = rad.sin_cos();
+    let (sin, cos) = if vertical_layout {
+        // 竖排正写：不旋转字符（相当于0度）
+        (0.0, 1.0)
+    } else {
+        // 正常旋转
+        let rad = angle_deg.to_radians();
+        rad.sin_cos()
+    };
 
     // 变换函数
     let transform = |x: f32, y: f32| -> (f32, f32) {
@@ -663,6 +716,7 @@ fn rasterize_text(text: &str, size: f32, angle_deg: f32, font: &Font, padding: u
     };
 
     // 3. 计算旋转后的边界
+    // 注意：如果是 vertical_layout，sin=0, cos=1，边界即为 unrotated 宽高
     let corners = [
         transform(0.0, 0.0),
         transform(unrotated_w, 0.0),
@@ -686,17 +740,32 @@ fn rasterize_text(text: &str, size: f32, angle_deg: f32, font: &Font, padding: u
 
     // 4. 像素收集与 Tight Bounding Box 计算
     let mut pixels = Vec::new();
-    let base_x = padding_f;
-    let base_y = padding_f + metrics.ascent;
 
     let mut tight_min_x = i32::MAX;
     let mut tight_max_x = i32::MIN;
     let mut tight_min_y = i32::MAX;
     let mut tight_max_y = i32::MIN;
 
-    for (offset_x, glyph_metrics, bitmap) in &glyphs {
-        let char_left = base_x + offset_x + glyph_metrics.xmin as f32;
-        let char_top = base_y - glyph_metrics.height as f32 - glyph_metrics.ymin as f32;
+    let base_x = padding_f;
+    let base_y = padding_f + metrics.ascent;
+
+    for (i, (offset_x, glyph_metrics, bitmap)) in glyphs.iter().enumerate() {
+        // 计算字符基准位置
+        let (char_left, char_top) = if vertical_layout {
+            // 竖排：居中对齐 X（基于列宽），Y 逐行递增
+            // 使用 max_glyph_width (advance) 来计算居中，确保与浏览器行为一致
+            let center_offset = (max_glyph_width - glyph_metrics.width as f32) / 2.0;
+            let x = base_x + center_offset;
+            let y = base_y + (i as f32 * metrics.new_line_size)
+                - glyph_metrics.height as f32
+                - glyph_metrics.ymin as f32;
+            (x, y)
+        } else {
+            // 横排
+            let x = base_x + offset_x + glyph_metrics.xmin as f32;
+            let y = base_y - glyph_metrics.height as f32 - glyph_metrics.ymin as f32;
+            (x, y)
+        };
 
         for y in 0..glyph_metrics.height {
             for x in 0..glyph_metrics.width {
@@ -849,21 +918,31 @@ impl WordCloud {
             self.background
         ));
 
-        // SVG Styling matches JS output: text-anchor: middle
+        // SVG Styling: 使用 central 基线对齐，对于垂直/旋转混合排版通常比 middle 更稳健
         svg.push_str(&format!(
-            r#"<style>text{{font-family:'{}',Arial,sans-serif;text-anchor:middle;dominant-baseline:middle}}</style>"#,
+            r#"<style>text{{font-family:'{}',Arial,sans-serif;text-anchor:middle;dominant-baseline:central}}</style>"#,
             escape_xml(&self.font_family)
         ));
 
         for word in &self.words {
-            // JS output uses: transform="translate(x,y) rotate(deg)"
+            // 如果是竖排正写模式，需要添加 vertical-rl 样式
+            // writing-mode: vertical-rl 让文字从上到下排列
+            // text-orientation: upright 让字符保持直立（不旋转90度）
+            // glyph-orientation-vertical: 0deg 兼容性补充
+            let style = if word.is_vertical {
+                r#" style="writing-mode: vertical-rl; text-orientation: upright; glyph-orientation-vertical: 0deg;""#
+            } else {
+                ""
+            };
+
             svg.push_str(&format!(
-                r#"<text transform="translate({:.1},{:.1}) rotate({:.1})" fill="{}" font-size="{:.1}">{}</text>"#,
+                r#"<text transform="translate({:.1},{:.1}) rotate({:.1})" fill="{}" font-size="{:.1}"{}>{}</text>"#,
                 word.x,
                 word.y,
                 word.rotation,
                 word.color,
                 word.font_size,
+                style,
                 escape_xml(&word.text)
             ));
         }
