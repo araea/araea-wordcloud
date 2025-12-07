@@ -16,7 +16,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // 设置字体大小范围
         .font_size_range(20.0, 100.0)
         // 设置角度包含 0度 和 90度/-90度
-        .angles(vec![0.0, -90.0, 90.0])
+        .angles(vec![0.0, -90.0])
         // 开启竖排正写功能
         // 开启后，凡是 90/-90 度的词，文字方向不会倒转，而是变为从上到下的竖排
         .vertical_writing(true)

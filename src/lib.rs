@@ -663,19 +663,11 @@ fn rasterize_text(
 
     let mut glyphs = Vec::new();
     let mut total_width = 0.0f32;
-    let mut max_glyph_width = 0.0f32;
 
     for ch in text.chars() {
         let (glyph_metrics, bitmap) = font.rasterize(ch, size);
         glyphs.push((total_width, glyph_metrics, bitmap));
         total_width += glyph_metrics.advance_width;
-
-        // 使用 advance_width 而不是 width 计算垂直列宽
-        // width 只是墨迹宽度，而 vertical-rl 布局时浏览器按 advance_width 对齐
-        // 这解决了包含窄字母（如英文）时，蒙版过窄导致重叠的问题
-        if glyph_metrics.advance_width > max_glyph_width {
-            max_glyph_width = glyph_metrics.advance_width;
-        }
     }
 
     // 2. 变换参数与布局计算
@@ -683,14 +675,36 @@ fn rasterize_text(
     let unrotated_w;
     let unrotated_h;
 
+    // 竖排模式下的 cell 尺寸（需要先计算，后续字符定位会用到）
+    let vertical_cell_width: f32;
+    let vertical_cell_height: f32;
+
     if vertical_layout {
-        // 竖排模式：宽度由最宽的字排版宽度决定
-        unrotated_w = max_glyph_width.ceil() + padding_f * 2.0;
-        // 简单估算：字符数 * line_size
-        unrotated_h =
-            (text.chars().count() as f32 * metrics.new_line_size).ceil() + padding_f * 2.0;
+        // 找出最大的字形宽度
+        let max_glyph_width = glyphs
+            .iter()
+            .map(|(_, gm, _)| gm.width as f32)
+            .fold(0.0f32, f32::max);
+
+        // cell 尺寸计算逻辑：
+        // 1. 宽度：取 size 和最大字形宽度的较大值，确保能容纳所有字符，并作为列宽基准。
+        vertical_cell_width = max_glyph_width.max(size);
+
+        // 2. 高度：直接使用 size * 1.15。
+        // 原逻辑依赖 max_glyph_height 对于小写英文（如 "ace"）会导致行距过小，
+        // 造成竖向堆叠时英文单词之间发生重叠。
+        // Web 浏览器默认行高通常约为 1.15 ~ 1.2，强制设定此高度能避免"英文叠英文"问题。
+        vertical_cell_height = size * 1.15;
+
+        // 竖排模式：
+        // 宽度 = cell_width + padding * 2
+        // 高度 = cell_height × 字符数 + padding * 2
+        unrotated_w = vertical_cell_width + padding_f * 2.0;
+        unrotated_h = (text.chars().count() as f32 * vertical_cell_height) + padding_f * 2.0;
     } else {
         // 横排模式（默认）
+        vertical_cell_width = 0.0;
+        vertical_cell_height = 0.0;
         unrotated_w = total_width.ceil() + padding_f * 2.0;
         unrotated_h = metrics.new_line_size.ceil() + padding_f * 2.0;
     }
@@ -716,7 +730,6 @@ fn rasterize_text(
     };
 
     // 3. 计算旋转后的边界
-    // 注意：如果是 vertical_layout，sin=0, cos=1，边界即为 unrotated 宽高
     let corners = [
         transform(0.0, 0.0),
         transform(unrotated_w, 0.0),
@@ -749,48 +762,66 @@ fn rasterize_text(
     let base_x = padding_f;
     let base_y = padding_f + metrics.ascent;
 
-    for (i, (offset_x, glyph_metrics, bitmap)) in glyphs.iter().enumerate() {
-        // 计算字符基准位置
-        let (char_left, char_top) = if vertical_layout {
-            // 竖排：居中对齐 X（基于列宽），Y 逐行递增
-            // 使用 max_glyph_width (advance) 来计算居中，确保与浏览器行为一致
-            let center_offset = (max_glyph_width - glyph_metrics.width as f32) / 2.0;
-            let x = base_x + center_offset;
-            let y = base_y + (i as f32 * metrics.new_line_size)
-                - glyph_metrics.height as f32
-                - glyph_metrics.ymin as f32;
-            (x, y)
-        } else {
-            // 横排
-            let x = base_x + offset_x + glyph_metrics.xmin as f32;
-            let y = base_y - glyph_metrics.height as f32 - glyph_metrics.ymin as f32;
-            (x, y)
-        };
+    if vertical_layout {
+        // 竖排模式：填充每个字符的完整 cell 区域
+        // 这样可以防止"中文叠加在英文上"或"英文叠加在英文上"的问题
+        // 因为每个字符都会占据一个完整的 cell_width × cell_height 空间
+        for (i, _) in glyphs.iter().enumerate() {
+            let cell_x = padding_f;
+            let cell_y = padding_f + (i as f32 * vertical_cell_height);
 
-        for y in 0..glyph_metrics.height {
-            for x in 0..glyph_metrics.width {
-                // Alpha threshold > 10
-                if bitmap[y * glyph_metrics.width + x] > 10 {
-                    let ox = char_left + x as f32;
-                    let oy = char_top + y as f32;
+            // 遍历整个 cell 区域的每一行
+            for row in 0..(vertical_cell_height as i32) {
+                let oy = cell_y + row as f32;
+
+                // 遍历整个 cell 宽度
+                for col in 0..(vertical_cell_width as i32) {
+                    let ox = cell_x + col as f32;
                     let (rx, ry) = transform(ox, oy);
 
                     let fx = (rx - min_x).round() as i32;
                     let fy = (ry - min_y).round() as i32;
 
-                    // 应用 padding (膨胀)
-                    let pad = padding as i32;
-                    for py in -pad..=pad {
-                        for px in -pad..=pad {
-                            let px_x = fx + px;
-                            let px_y = fy + py;
+                    // 对于竖排模式，不需要额外的 padding 扩展，因为我们已经填充了整个 cell
+                    // 但为了保持与横排模式的一致性，仍然可以添加少量 padding
+                    if fx >= 0 && fy >= 0 && fx < buf_width && fy < buf_height {
+                        pixels.push((fx, fy));
+                        tight_min_x = tight_min_x.min(fx);
+                        tight_max_x = tight_max_x.max(fx);
+                        tight_min_y = tight_min_y.min(fy);
+                        tight_max_y = tight_max_y.max(fy);
+                    }
+                }
+            }
+        }
+    } else {
+        // 横排模式：按字符实际像素填充
+        for (offset_x, glyph_metrics, bitmap) in glyphs.iter() {
+            let char_left = base_x + offset_x + glyph_metrics.xmin as f32;
+            let char_top = base_y - glyph_metrics.height as f32 - glyph_metrics.ymin as f32;
 
-                            if px_x >= 0 && px_y >= 0 && px_x < buf_width && px_y < buf_height {
-                                pixels.push((px_x, px_y));
-                                tight_min_x = tight_min_x.min(px_x);
-                                tight_max_x = tight_max_x.max(px_x);
-                                tight_min_y = tight_min_y.min(px_y);
-                                tight_max_y = tight_max_y.max(px_y);
+            for y in 0..glyph_metrics.height {
+                for x in 0..glyph_metrics.width {
+                    if bitmap[y * glyph_metrics.width + x] > 10 {
+                        let ox = char_left + x as f32;
+                        let oy = char_top + y as f32;
+                        let (rx, ry) = transform(ox, oy);
+
+                        let fx = (rx - min_x).round() as i32;
+                        let fy = (ry - min_y).round() as i32;
+
+                        let pad = padding as i32;
+                        for py in -pad..=pad {
+                            for px in -pad..=pad {
+                                let px_x = fx + px;
+                                let px_y = fy + py;
+                                if px_x >= 0 && px_y >= 0 && px_x < buf_width && px_y < buf_height {
+                                    pixels.push((px_x, px_y));
+                                    tight_min_x = tight_min_x.min(px_x);
+                                    tight_max_x = tight_max_x.max(px_x);
+                                    tight_min_y = tight_min_y.min(px_y);
+                                    tight_max_y = tight_max_y.max(px_y);
+                                }
                             }
                         }
                     }
