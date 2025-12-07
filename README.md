@@ -5,13 +5,14 @@
 [<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-araea__wordcloud-66c2a5?style=for-the-badge&labelColor=555555&logo=docs.rs" height="20">](https://docs.rs/araea-wordcloud)
 
 A high-performance word cloud visualization library implemented in pure Rust.
-Supports mask shapes, SVG/PNG dual output, custom fonts, and accurate pixel-perfect collision detection.
+Supports mask shapes, SVG/PNG dual output, custom fonts, vertical writing, and accurate pixel-perfect collision detection.
 
 ## Features
 
 - ⚡ **Pure Rust Implementation** - Efficient collision detection using bitmasking and spiral search.
 - 🖼️ **Multiple Output Formats** - Export as vector graphics (SVG) or bitmap (PNG).
 - 🎭 **Mask Support** - Built-in shapes (Heart, Star, Cloud, etc.) and custom image masks.
+- ✍️ **Vertical Writing** - Support for traditional vertical text layout (vertical-rl), perfect for Chinese/Japanese calligraphy styles.
 - 🎨 **Highly Customizable** - Precise control over colors, rotation, spacing, and fonts.
 - 📦 **Ready to Use** - Built-in Chinese font support (HarmonyOS Sans SC).
 
@@ -82,6 +83,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+### Vertical Writing (竖排正写)
+
+To enable vertical writing (ideal for Chinese/Japanese), set `vertical_writing(true)` and include `90.0` or `-90.0` in your angles. Characters will be stacked vertically but remain upright, rather than the whole word being rotated sideways.
+
+```rust
+let wordcloud = WordCloudBuilder::new()
+    .size(800, 800)
+    // Allow words to be placed vertically (90 degrees)
+    .angles(vec![0.0, 90.0])
+    // Enable vertical writing mode:
+    // Words placed at 90/-90 degrees will have characters stacked vertically
+    .vertical_writing(true)
+    .build(&words)?;
+```
+
 ## Examples
 
 ### Simple Word Cloud
@@ -126,17 +142,18 @@ Run the examples:
 
 ### Builder Options
 
-| Method                | Description                         | Default                      |
-| :-------------------- | :---------------------------------- | :--------------------------- |
-| `.size(w, h)`         | Canvas dimensions                   | 800x600                      |
-| `.background(hex)`    | Custom background color             | #FFFFFF (or based on scheme) |
-| `.colors(vec![...])`  | Custom list of hex colors           | Default Scheme               |
-| `.color_scheme(enum)` | Use a preset color scheme           | `ColorScheme::Default`       |
-| `.font(bytes)`        | Custom font file data (TTF/OTF)     | HarmonyOS Sans SC Bold       |
-| `.mask(bytes)`        | Custom mask image (SVG/PNG)         | None                         |
-| `.padding(px)`        | Collision padding between words     | 5                            |
-| `.angles(vec![...])`  | Allowed rotation angles (degrees)   | `vec![0.0]` (Horizontal)     |
-| `.seed(u64)`          | Random seed for reproducible layout | Random                       |
+| Method                    | Description                                                    | Default                      |
+| :------------------------ | :------------------------------------------------------------- | :--------------------------- |
+| `.size(w, h)`             | Canvas dimensions                                              | 800x600                      |
+| `.background(hex)`        | Custom background color                                        | #FFFFFF (or based on scheme) |
+| `.colors(vec![...])`      | Custom list of hex colors                                      | Default Scheme               |
+| `.color_scheme(enum)`     | Use a preset color scheme                                      | `ColorScheme::Default`       |
+| `.font(bytes)`            | Custom font file data (TTF/OTF)                                | HarmonyOS Sans SC Bold       |
+| `.mask(bytes)`            | Custom mask image (SVG/PNG)                                    | None                         |
+| `.padding(px)`            | Collision padding between words                                | 5                            |
+| `.angles(vec![...])`      | Allowed rotation angles (degrees)                              | `vec![0.0]` (Horizontal)     |
+| `.vertical_writing(bool)` | Enable upright vertical text flow (for CJK) when angle is ±90° | `false`                      |
+| `.seed(u64)`              | Random seed for reproducible layout                            | Random                       |
 
 ## Acknowledgments
 
