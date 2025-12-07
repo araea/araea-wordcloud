@@ -11,10 +11,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 构建词云
     let wordcloud = WordCloudBuilder::new()
-        // 设置画布大小
-        .size(1000, 800)
-        // 设置字体大小范围
-        .font_size_range(20.0, 100.0)
         // 设置角度包含 0度 和 90度/-90度
         .angles(vec![0.0, -90.0])
         // 开启竖排正写功能

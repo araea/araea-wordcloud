@@ -175,7 +175,6 @@ pub struct WordCloudBuilder {
 
 impl Default for WordCloudBuilder {
     fn default() -> Self {
-        // 配置与 JS 默认值一致
         let scheme = ColorScheme::Default;
         Self {
             width: 800,
@@ -691,9 +690,6 @@ fn rasterize_text(
         vertical_cell_width = max_glyph_width.max(size);
 
         // 2. 高度：直接使用 size * 1.15。
-        // 原逻辑依赖 max_glyph_height 对于小写英文（如 "ace"）会导致行距过小，
-        // 造成竖向堆叠时英文单词之间发生重叠。
-        // Web 浏览器默认行高通常约为 1.15 ~ 1.2，强制设定此高度能避免"英文叠英文"问题。
         vertical_cell_height = size * 1.15;
 
         // 竖排模式：
