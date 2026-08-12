@@ -1,2 +1,4 @@
 /target
 Cargo.lock
+output_simple.png
+output_simple.svg
