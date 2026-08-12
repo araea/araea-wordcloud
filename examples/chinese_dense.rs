@@ -1,5 +1,5 @@
 use araea_wordcloud::{WordCloudBuilder, WordInput};
-use rand::Rng;
+use rand::RngExt;
 use std::fs;
 use std::time::Instant;
 

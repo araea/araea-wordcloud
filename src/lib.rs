@@ -6,7 +6,7 @@
 
 use fontdue::{Font, FontSettings};
 use image::GenericImageView;
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use std::sync::Arc;
 use thiserror::Error;
@@ -301,7 +301,8 @@ impl WordCloudBuilder {
         // 初始化随机数
         let mut rng = match self.seed {
             Some(s) => ChaCha8Rng::seed_from_u64(s),
-            None => ChaCha8Rng::from_os_rng(),
+            None => ChaCha8Rng::try_from_rng(&mut rand::rngs::SysRng)
+                .expect("failed to initialize RNG from system entropy"),
         };
 
         // 排序单词（权重从大到小）
