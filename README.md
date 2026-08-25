@@ -102,7 +102,7 @@ let wordcloud = WordCloudBuilder::new()
 
 ### Simple Word Cloud
 
-![Simple Example](./output_simple.png)
+![Simple Example](./output_chinese_vertical.png)
 
 ### Chinese Dense Word Cloud
 
