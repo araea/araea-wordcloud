@@ -199,12 +199,6 @@ Default Chinese layout:
 
 ![Chinese dense](./output_chinese_dense.png)
 
-## Acknowledgments
-
-Thanks to [wordcloud.online](https://wordcloud.online/zh) for the
-layout approach — canvas-style pixel collision, spiral search, and
-the general look of the result.
-
 <br>
 
 #### License
