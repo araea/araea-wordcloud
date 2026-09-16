@@ -1,6 +1,6 @@
 # araea-wordcloud
 
-Rust 库：把带权词语排布成 SVG 或 PNG。文字按像素掩码沿阿基米德螺线放置，放不进画布的词语会被跳过。
+Rust 库：把带权词语排布成 SVG 或 PNG。文字按像素掩码沿阿基米德螺线放置。放不进画布的词语会被跳过。
 
 ## 安装
 
@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-空字符串与非正权重会被忽略；过滤后没有词语时返回错误。
+空字符串与非正权重会被忽略。过滤后没有词语时返回错误。
 
 ## 配置
 
@@ -34,7 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 - `font_size_range(min, max)`：字号范围，默认 10–100
 - `mask_preset` / `mask`：内置形状，或 SVG、PNG、JPEG 掩码
 - `color_scheme` / `colors` / `background`：颜色
-- `angles`：旋转角度；配合 `vertical_writing(true)` 支持竖排 CJK
+- `angles`：旋转角度。配合 `vertical_writing(true)` 支持竖排 CJK
 - `padding(px)`：碰撞间距，默认 5
 - `seed(u64)`：固定布局，便于复现
 
