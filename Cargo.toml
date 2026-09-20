@@ -1,6 +1,6 @@
 [package]
 name = "araea-wordcloud"
-version = "0.1.12"
+version = "0.1.13"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 authors = ["Araea"]
@@ -39,6 +39,10 @@ path = "examples/advanced.rs"
 [[example]]
 name = "chinese_dense"
 path = "examples/chinese_dense.rs"
+
+[[example]]
+name = "trim"
+path = "examples/trim.rs"
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]

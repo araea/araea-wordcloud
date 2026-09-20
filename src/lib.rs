@@ -50,6 +50,72 @@ impl WordInput {
     }
 }
 
+/// 画布上的像素矩形：左上角 `(x, y)` 与宽高。
+///
+/// 词是绕着画布中心摆的，词少时四周会空出一大圈背景。`Bounds` 描述一个词（或整朵
+/// 云）实际占到的范围，`WordCloudBuilder::trim` 据此决定成图大小。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Bounds {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl Bounds {
+    /// 右边界（不含）。
+    pub fn right(&self) -> u32 {
+        self.x + self.width
+    }
+
+    /// 下边界（不含）。
+    pub fn bottom(&self) -> u32 {
+        self.y + self.height
+    }
+
+    /// 由左上角与宽高构造，并夹回画布之内。
+    fn clipped(x: i32, y: i32, width: u32, height: u32, canvas_w: u32, canvas_h: u32) -> Self {
+        let x0 = x.clamp(0, canvas_w as i32) as u32;
+        let y0 = y.clamp(0, canvas_h as i32) as u32;
+        let x1 = (x + width as i32).clamp(0, canvas_w as i32) as u32;
+        let y1 = (y + height as i32).clamp(0, canvas_h as i32) as u32;
+        Self {
+            x: x0,
+            y: y0,
+            width: x1.saturating_sub(x0),
+            height: y1.saturating_sub(y0),
+        }
+    }
+
+    /// 两个矩形的最小外接矩形。
+    fn union(self, other: Self) -> Self {
+        let x = self.x.min(other.x);
+        let y = self.y.min(other.y);
+        let right = self.right().max(other.right());
+        let bottom = self.bottom().max(other.bottom());
+        Self {
+            x,
+            y,
+            width: right - x,
+            height: bottom - y,
+        }
+    }
+
+    /// 四边各留 `margin`，再夹回 `canvas_w × canvas_h` 之内。
+    fn expand_within(self, margin: u32, canvas_w: u32, canvas_h: u32) -> Self {
+        let x = self.x.saturating_sub(margin);
+        let y = self.y.saturating_sub(margin);
+        let right = self.right().saturating_add(margin).min(canvas_w);
+        let bottom = self.bottom().saturating_add(margin).min(canvas_h);
+        Self {
+            x,
+            y,
+            width: right.saturating_sub(x),
+            height: bottom.saturating_sub(y),
+        }
+    }
+}
+
 /// 已布局的单词
 #[derive(Debug, Clone)]
 pub struct PlacedWord {
@@ -61,6 +127,8 @@ pub struct PlacedWord {
     pub color: String,
     /// 是否为竖排正写
     pub is_vertical: bool,
+    /// 该词在画布上占到的范围（含碰撞用的 padding）
+    pub bounds: Bounds,
 }
 
 /// 预设配色方案
@@ -171,6 +239,8 @@ pub struct WordCloudBuilder {
     angles: Vec<f32>,
     seed: Option<u64>,
     vertical_writing: bool,
+    trim: bool,
+    trim_margin: u32,
 }
 
 impl Default for WordCloudBuilder {
@@ -189,6 +259,8 @@ impl Default for WordCloudBuilder {
             angles: vec![0.0],
             seed: None,
             vertical_writing: false,
+            trim: false,
+            trim_margin: 0,
         }
     }
 }
@@ -269,6 +341,24 @@ impl WordCloudBuilder {
         self
     }
 
+    /// 成图是否裁到内容边界（默认 `false`：保持整张画布）。
+    ///
+    /// 词少的时候，词只占画布中间一小块，四周会留下大片背景。开启后，输出的
+    /// SVG/PNG 会把四周没有内容的部分裁掉，只保留内容外由 `trim_margin` 指定的
+    /// 一圈。此时画布尺寸只决定词排得开不开，不再决定成图大小。
+    pub fn trim(mut self, enable: bool) -> Self {
+        self.trim = enable;
+        self
+    }
+
+    /// 裁到内容边界后，四周额外留下的像素（默认 `0`）。
+    ///
+    /// 词的像素掩码本身已按 `padding` 向外扩过，`trim_margin` 是在那之上再加的一圈。
+    pub fn trim_margin(mut self, margin: u32) -> Self {
+        self.trim_margin = margin;
+        self
+    }
+
     pub fn build(self, words: &[WordInput]) -> Result<WordCloud, Error> {
         if words.is_empty() {
             return Err(Error::Input("Word list cannot be empty".into()));
@@ -330,7 +420,7 @@ impl WordCloudBuilder {
             let angle = self.angles[rng.random_range(0..self.angles.len())];
 
             // 尝试放置
-            if let Some((pos, placed_angle, is_vertical)) = self.try_place_word(
+            if let Some(placement) = self.try_place_word(
                 &word.text,
                 font_size,
                 angle,
@@ -343,23 +433,47 @@ impl WordCloudBuilder {
                 placed_words.push(PlacedWord {
                     text: word.text.clone(),
                     font_size,
-                    x: pos.0,
-                    y: pos.1,
-                    rotation: placed_angle,
+                    x: placement.center.0,
+                    y: placement.center.1,
+                    rotation: placement.angle,
                     color,
-                    is_vertical,
+                    is_vertical: placement.is_vertical,
+                    bounds: placement.bounds,
                 });
             }
         }
+
+        let viewport = self.output_viewport(&placed_words);
 
         Ok(WordCloud {
             width: self.width,
             height: self.height,
             background: self.background,
             words: placed_words,
+            viewport,
             font_data: font_info.data,
             font_family: font_info.family_name,
         })
+    }
+
+    /// 成图的实际输出区域。
+    ///
+    /// 未开启 `trim`、或一个词也没排下时，就是整张画布；否则是所有词包围盒的并集，
+    /// 四边再加 `trim_margin`，并夹回画布内——成图只会在画布里挪，不会超出设定尺寸。
+    fn output_viewport(&self, words: &[PlacedWord]) -> Bounds {
+        let full = Bounds {
+            x: 0,
+            y: 0,
+            width: self.width,
+            height: self.height,
+        };
+        if !self.trim {
+            return full;
+        }
+        match words.iter().map(|w| w.bounds).reduce(Bounds::union) {
+            Some(bounds) => bounds.expand_within(self.trim_margin, self.width, self.height),
+            None => full,
+        }
     }
 
     fn load_font(&self) -> Result<FontInfo, Error> {
@@ -455,7 +569,7 @@ impl WordCloudBuilder {
         map: &mut CollisionMap,
         padding: u32,
         rng: &mut ChaCha8Rng,
-    ) -> Option<((f32, f32), f32, bool)> {
+    ) -> Option<Placement> {
         // 判断是否触发竖排正写逻辑：开启了选项，且角度接近 90 或 -90 度
         let is_vertical = self.vertical_writing && (angle.abs() - 90.0).abs() < 1.0;
 
@@ -488,14 +602,22 @@ impl WordCloudBuilder {
                 // 如果是竖排，angle 改为 0，因为字体不再旋转，而是排版旋转
                 let final_angle = if is_vertical { 0.0 } else { angle };
 
-                return Some((
-                    (
+                return Some(Placement {
+                    center: (
                         current_x as f32 + sprite.text_center_x,
                         current_y as f32 + sprite.text_center_y,
                     ),
-                    final_angle,
+                    angle: final_angle,
                     is_vertical,
-                ));
+                    bounds: Bounds::clipped(
+                        current_x,
+                        current_y,
+                        sprite.bbox_width,
+                        sprite.bbox_height,
+                        map.width,
+                        map.height,
+                    ),
+                });
             }
         }
 
@@ -641,6 +763,14 @@ struct TextSprite {
     bbox_height: u32,
     text_center_x: f32, // TopLeft 到 Text Center 的偏移
     text_center_y: f32,
+}
+
+/// 一次成功的放置：中心点、旋转、是否竖排，以及在画布上占到的范围。
+struct Placement {
+    center: (f32, f32),
+    angle: f32,
+    is_vertical: bool,
+    bounds: Bounds,
 }
 
 fn rasterize_text(
@@ -928,22 +1058,32 @@ pub struct WordCloud {
     pub height: u32,
     pub background: String,
     pub words: Vec<PlacedWord>,
+    /// 成图的实际输出区域。开启 `trim` 后是内容边界加余量，否则是整张画布。
+    pub viewport: Bounds,
     font_data: Vec<u8>,
     font_family: String,
 }
 
 impl WordCloud {
+    /// 所有已放置词覆盖到的最小矩形；一个词也没排下时返回 `None`。
+    ///
+    /// 这是「内容边界」，不含 `trim_margin`；成图实际输出的区域看 `viewport`。
+    pub fn content_bounds(&self) -> Option<Bounds> {
+        self.words.iter().map(|w| w.bounds).reduce(Bounds::union)
+    }
+
     pub fn to_svg(&self) -> String {
         let mut svg = String::with_capacity(8192);
+        let view = self.viewport;
 
         svg.push_str(&format!(
-            r#"<svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" viewBox="0 0 {} {}">"#,
-            self.width, self.height, self.width, self.height
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" viewBox="{} {} {} {}">"#,
+            view.width, view.height, view.x, view.y, view.width, view.height
         ));
 
         svg.push_str(&format!(
-            r#"<rect x="0" y="0" width="100%" height="100%" fill="{}"/>"#,
-            self.background
+            r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{}"/>"#,
+            view.x, view.y, view.width, view.height, self.background
         ));
 
         // SVG Styling: 使用 central 基线对齐，对于垂直/旋转混合排版通常比 middle 更稳健
@@ -1042,4 +1182,97 @@ pub fn generate(words: &[(&str, f32)]) -> Result<WordCloud, Error> {
         .collect();
 
     WordCloudBuilder::new().build(&inputs)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn few_words() -> Vec<WordInput> {
+        vec![
+            WordInput::new("Rust", 100.0),
+            WordInput::new("Code", 60.0),
+            WordInput::new("Fast", 40.0),
+            WordInput::new("Safe", 30.0),
+        ]
+    }
+
+    fn build_trimmed(margin: u32) -> WordCloud {
+        WordCloudBuilder::new()
+            .size(800, 600)
+            .seed(1)
+            .trim(true)
+            .trim_margin(margin)
+            .build(&few_words())
+            .unwrap()
+    }
+
+    #[test]
+    fn default_output_keeps_the_full_canvas() {
+        let cloud = WordCloudBuilder::new()
+            .size(800, 600)
+            .seed(1)
+            .build(&few_words())
+            .unwrap();
+        assert_eq!(
+            cloud.viewport,
+            Bounds {
+                x: 0,
+                y: 0,
+                width: 800,
+                height: 600,
+            }
+        );
+        assert!(cloud.to_svg().contains(r#"viewBox="0 0 800 600""#));
+    }
+
+    #[test]
+    fn trim_fits_the_output_to_the_content() {
+        let cloud = build_trimmed(0);
+        let content = cloud.content_bounds().expect("the words were placed");
+
+        // 词少的时候内容只占画布中间一小块，成图应该明显小于画布。
+        assert!(cloud.viewport.width < cloud.width);
+        assert!(cloud.viewport.height < cloud.height);
+        // 内容必须完整落在成图区域里。
+        assert!(cloud.viewport.x <= content.x && cloud.viewport.y <= content.y);
+        assert!(cloud.viewport.right() >= content.right());
+        assert!(cloud.viewport.bottom() >= content.bottom());
+
+        let svg = cloud.to_svg();
+        assert!(svg.contains(&format!(
+            r#"viewBox="{} {} {} {}""#,
+            cloud.viewport.x, cloud.viewport.y, cloud.viewport.width, cloud.viewport.height
+        )));
+    }
+
+    #[test]
+    fn trim_margin_adds_room_but_never_leaves_the_canvas() {
+        let tight = build_trimmed(0);
+        let padded = build_trimmed(24);
+
+        assert!(padded.viewport.width >= tight.viewport.width);
+        assert!(padded.viewport.height >= tight.viewport.height);
+
+        // 余量给得再大也不该让成图超出画布。
+        let huge = build_trimmed(10_000);
+        assert_eq!(
+            huge.viewport,
+            Bounds {
+                x: 0,
+                y: 0,
+                width: 800,
+                height: 600,
+            }
+        );
+    }
+
+    #[test]
+    fn trimmed_png_matches_the_viewport() {
+        let cloud = build_trimmed(8);
+        let png = cloud.to_png(1.0).unwrap();
+        let img = image::load_from_memory(&png).unwrap();
+        assert_eq!(img.width(), cloud.viewport.width);
+        assert_eq!(img.height(), cloud.viewport.height);
+    }
 }
