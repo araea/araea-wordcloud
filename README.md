@@ -1,21 +1,24 @@
 # araea-wordcloud
 
-Rust 词云库，将带权词语排布为 SVG 或 PNG。
+Rust 词云库：把带权重的词语排布为 SVG 或 PNG 词云图片
+
+[![GitHub](https://img.shields.io/badge/GitHub-仓库-181717?logo=github)](https://github.com/araea/araea-wordcloud)
+[![crates.io](https://img.shields.io/badge/crates.io-库-cc342d?logo=rust)](https://crates.io/crates/araea-wordcloud)
 
 ## 安装
 
 ```toml
 [dependencies]
-araea-wordcloud = "0.1"
+araea-wordcloud = "0.1.13"
 ```
 
-## 示例
+## 快速使用
 
 ```rust
 use araea_wordcloud::generate;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let words = [("Rust", 100.0), ("Code", 60.0)];
+    let words = [("Rust", 100.0), ("Code", 60.0), ("Safe", 30.0)];
     let cloud = generate(&words)?;
     std::fs::write("output.svg", cloud.to_svg())?;
     std::fs::write("output.png", cloud.to_png(2.0)?)?;
@@ -23,27 +26,54 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-空词和非正权重会被忽略；过滤后没有词时返回错误。
+## API 与配置
 
-## 布局与输出
+`generate(&[(&str, f32)])` 是最简入口，接收词语与权重，返回 `WordCloud`。需要更多控制时用 `WordCloudBuilder`。
 
-布局基于像素掩码与阿基米德螺线。无法放入画布的词会被跳过。
+`WordInput::new(text, weight)` 构造单个词，权重小于 0 会被夹为 0。
 
-复杂布局可使用 `WordCloudBuilder` 设置画布尺寸、字体、字号范围、掩码、颜色、旋转角度、间距和随机种子。支持内置 Circle、Cloud、Heart、Skull、Star、Triangle 掩码，也可加载 SVG、PNG 或 JPEG 掩码。竖排 CJK 可通过 `vertical_writing(true)` 启用。
+`WordCloudBuilder` 的方法：
 
-默认画布为 800×600，字号范围为 10–100，间距为 5 px，字体为内置 HarmonyOS Sans SC Bold。`trim(true)` 按词语包围盒裁切成图；`trim_margin(px)` 设置裁切边距。SVG 与 PNG 使用相同裁切边界。
+| 方法 | 作用 |
+| --- | --- |
+| `size(width, height)` | 画布尺寸，各不小于 100，默认 800×600 |
+| `background(color)` | 背景色，默认随配色方案 |
+| `color_scheme(ColorScheme)` | 套用预设配色与背景 |
+| `colors(iter)` | 自定义颜色列表 |
+| `font(Vec<u8>)` | 传入字体字节替换内置字体 |
+| `mask(Vec<u8>)` | 传入 SVG / PNG / JPEG 蒙版字节 |
+| `mask_preset(MaskShape)` | 使用内置形状蒙版 |
+| `padding(u32)` | 词间距，默认 5 |
+| `font_size_range(min, max)` | 字号范围，min 不小于 4，默认 10–100 |
+| `angles(Vec<f32>)` | 可选旋转角度，默认 `[0.0]` |
+| `seed(u64)` | 固定随机种子以复现布局 |
+| `vertical_writing(bool)` | 竖排正写（CJK），默认关 |
+| `trim(bool)` | 裁到内容边界，默认关 |
+| `trim_margin(u32)` | 裁切后的留白像素，默认 0 |
+| `build(&[WordInput])` | 生成 `WordCloud` |
 
-`to_svg()` 返回 SVG 字符串，`to_png(scale)` 返回 PNG 字节。`WordCloud` 提供画布尺寸、视口、背景和每个词的位置、字号、颜色、旋转角度及包围盒；`content_bounds()` 返回内容边界。
+`ColorScheme`：`Default`、`Contrasting1`、`Blue`、`Green`、`Cold1`、`Black`、`White`。
 
-## 测试
+`MaskShape`：`Circle`、`Cloud`、`Heart`、`Skull`、`Star`、`Triangle`。
 
-```sh
-cargo test
-cargo run --example simple
-cargo run --example trim
-cargo run --example chinese_vertical
-```
+`WordCloud` 字段：`width`、`height`、`background`、`words`（`Vec<PlacedWord>`）、`viewport`（`Bounds`）。方法：`to_svg() -> String`、`to_png(scale: f32) -> Result<Vec<u8>, Error>`、`content_bounds() -> Option<Bounds>`。
 
-## 许可证
+布局基于像素掩码与阿基米德螺线，词按权重从大到小排列。
 
-可按 [Apache-2.0](LICENSE-APACHE) 或 [MIT](LICENSE-MIT) 使用。
+## 限制与风险
+
+空词与权重不大于 0 的词会被忽略；过滤后没有有效词时 `build` / `generate` 返回 `Error::Input`。
+
+放不进画布的词会被跳过，不报错。
+
+内置字体为 HarmonyOS Sans SC Bold，主要覆盖中文与拉丁字符；其他文字用 `font` 替换。
+
+蒙版中接近白色（RGB 之和不小于 750）或 alpha 小于 128 的区域视为不可放置。
+
+未设 `seed` 时布局随机。
+
+## 链接
+
+仓库：<https://github.com/araea/araea-wordcloud>
+
+许可证：Apache-2.0 或 MIT，见 [LICENSE-APACHE](LICENSE-APACHE) 与 [LICENSE-MIT](LICENSE-MIT)。
