@@ -1,6 +1,6 @@
 # araea-wordcloud
 
-Rust 词云库，可将带权词语排布为 SVG 或 PNG。布局使用像素掩码和阿基米德螺线；无法放入画布的词会被跳过。
+Rust 词云库，将带权词语排布为 SVG 或 PNG。
 
 ## 安装
 
@@ -26,6 +26,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 空词和非正权重会被忽略；过滤后没有词时返回错误。
 
 ## 布局与输出
+
+布局基于像素掩码与阿基米德螺线。无法放入画布的词会被跳过。
 
 复杂布局可使用 `WordCloudBuilder` 设置画布尺寸、字体、字号范围、掩码、颜色、旋转角度、间距和随机种子。支持内置 Circle、Cloud、Heart、Skull、Star、Triangle 掩码，也可加载 SVG、PNG 或 JPEG 掩码。竖排 CJK 可通过 `vertical_writing(true)` 启用。
 
