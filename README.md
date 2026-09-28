@@ -2,8 +2,9 @@
 
 Rust 词云库：把带权重的词语排布为 SVG 或 PNG 词云图片
 
-[![GitHub](https://img.shields.io/badge/GitHub-仓库-181717?logo=github)](https://github.com/araea/araea-wordcloud)
-[![crates.io](https://img.shields.io/badge/crates.io-库-cc342d?logo=rust)](https://crates.io/crates/araea-wordcloud)
+[![GitHub](https://img.shields.io/badge/GitHub-araea%2Faraea--wordcloud-181717?logo=github&logoColor=white)](https://github.com/araea/araea-wordcloud)
+[![crates.io](https://img.shields.io/crates/v/araea-wordcloud?logo=rust&logoColor=white&color=CC342D)](https://crates.io/crates/araea-wordcloud)
+[![docs.rs](https://img.shields.io/docsrs/araea-wordcloud?logo=docs.rs&logoColor=white)](https://docs.rs/araea-wordcloud)
 
 ## 安装
 
@@ -26,15 +27,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-## API 与配置
+## API
 
-`generate(&[(&str, f32)])` 是最简入口，接收词语与权重，返回 `WordCloud`。需要更多控制时用 `WordCloudBuilder`。
+`generate(&[(&str, f32)])` 是最简入口，接收词语与权重，返回 `WordCloud`。需要更多控制时用 `WordCloudBuilder`；`WordInput::new(text, weight)` 构造单个词，权重小于 0 会被夹为 0。
 
-`WordInput::new(text, weight)` 构造单个词，权重小于 0 会被夹为 0。
-
-`WordCloudBuilder` 的方法：
-
-| 方法 | 作用 |
+| `WordCloudBuilder` 方法 | 作用 |
 | --- | --- |
 | `size(width, height)` | 画布尺寸，各不小于 100，默认 800×600 |
 | `background(color)` | 背景色，默认随配色方案 |
@@ -52,15 +49,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 | `trim_margin(u32)` | 裁切后的留白像素，默认 0 |
 | `build(&[WordInput])` | 生成 `WordCloud` |
 
-`ColorScheme`：`Default`、`Contrasting1`、`Blue`、`Green`、`Cold1`、`Black`、`White`。
-
-`MaskShape`：`Circle`、`Cloud`、`Heart`、`Skull`、`Star`、`Triangle`。
-
-`WordCloud` 字段：`width`、`height`、`background`、`words`（`Vec<PlacedWord>`）、`viewport`（`Bounds`）。方法：`to_svg() -> String`、`to_png(scale: f32) -> Result<Vec<u8>, Error>`、`content_bounds() -> Option<Bounds>`。
+- `ColorScheme`：`Default`、`Contrasting1`、`Blue`、`Green`、`Cold1`、`Black`、`White`
+- `MaskShape`：`Circle`、`Cloud`、`Heart`、`Skull`、`Star`、`Triangle`
+- `WordCloud`：字段 `width`、`height`、`background`、`words`（`Vec<PlacedWord>`）、`viewport`（`Bounds`）；方法 `to_svg() -> String`、`to_png(scale: f32) -> Result<Vec<u8>, Error>`、`content_bounds() -> Option<Bounds>`
 
 布局基于像素掩码与阿基米德螺线，词按权重从大到小排列。
 
-## 限制与风险
+## 限制 / 风险
 
 空词与权重不大于 0 的词会被忽略；过滤后没有有效词时 `build` / `generate` 返回 `Error::Input`。
 
@@ -74,6 +69,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## 链接
 
-仓库：<https://github.com/araea/araea-wordcloud>
-
-许可证：Apache-2.0 或 MIT，见 [LICENSE-APACHE](LICENSE-APACHE) 与 [LICENSE-MIT](LICENSE-MIT)。
+- [crates.io](https://crates.io/crates/araea-wordcloud)
+- [docs.rs 文档](https://docs.rs/araea-wordcloud)
+- [MIT](LICENSE-MIT) / [Apache-2.0](LICENSE-APACHE)
