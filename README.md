@@ -67,7 +67,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 未设 `seed` 时布局随机。
 
-## 链接
+## 必要链接
 
 - [crates.io](https://crates.io/crates/araea-wordcloud)
 - [docs.rs 文档](https://docs.rs/araea-wordcloud)
